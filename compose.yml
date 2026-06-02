@@ -1,0 +1,46 @@
+services:
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    # Gate API and worker startup on Redis accepting commands.
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  api:
+    build: .
+    command: npm run start:api
+    # Mirror Kubernetes-style runtime configuration in the local lab.
+    environment:
+      SERVICE_NAME: webhook-queue-lab-api
+      API_PORT: "3000"
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+      QUEUE_NAME: webhook-delivery
+      APP_VERSION: compose
+    ports:
+      - "3000:3000"
+    depends_on:
+      redis:
+        condition: service_healthy
+
+  worker:
+    build: .
+    command: npm run start:worker
+    # The worker shares the queue and Redis settings with the API producer.
+    environment:
+      SERVICE_NAME: webhook-queue-lab-worker
+      WORKER_METRICS_PORT: "3001"
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+      QUEUE_NAME: webhook-delivery
+      WORKER_CONCURRENCY: "2"
+      APP_VERSION: compose
+    ports:
+      - "3001:3001"
+    depends_on:
+      redis:
+        condition: service_healthy
